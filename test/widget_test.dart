@@ -13,6 +13,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Photos'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Trash'),
+      250,
+      scrollable: find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('Trash'), findsOneWidget);
     expect(find.byTooltip('Sort'), findsOneWidget);
   });
