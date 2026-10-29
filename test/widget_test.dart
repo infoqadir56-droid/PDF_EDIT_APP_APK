@@ -1,16 +1,19 @@
 // Basic Flutter widget test for PdfStudioApp.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pdf_app_project/main.dart';
 
 void main() {
-  testWidgets('PdfStudioApp renders app header and documents', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const PdfStudioApp());
+  testWidgets('PdfStudioApp renders the file library categories', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
 
-    // Verify header text and document entries exist.
-    expect(find.text('paper'), findsOneWidget);
-    expect(find.text('Project proposal 2026.pdf'), findsOneWidget);
+    await tester.pumpWidget(const PdfStudioApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Photos'), findsOneWidget);
+    expect(find.text('Trash'), findsOneWidget);
+    expect(find.byTooltip('Sort'), findsOneWidget);
   });
 }
