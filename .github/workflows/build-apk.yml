@@ -1,40 +1,48 @@
-
-name: Build Flutter APK
-
 on:
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - master
   push:
-    branches: [main]
-
+    branches:
+      - main
+      - master
+      - develop
+name: "Build & Release"
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    name: Build & Release
+    runs-on: macos-latest
     steps:
-      - name: Checkout project
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v1
+      - uses: actions/setup-java@v1
         with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+          java-version: '12.x'
+      - uses: subosito/flutter-action@v1
         with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build APK
-        run: flutter build apk --debug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+          flutter-version: '2.2.0'
+      - run: flutter pub get
+      - run: flutter test
+      - run: flutter build apk --debug --split-per-abi
+      - run: |
+          flutter build ios --no-codesign
+          cd build/ios/iphoneos
+          mkdir Payload
+          cd Payload
+          ln -s ../Runner.app
+          cd ..
+          zip -r app.ipa Payload
+      - name: Push to Releases
+        uses: ncipollo/release-action@v1
         with:
-          name: pdf-app-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: error
+          artifacts: "build/app/outputs/apk/debug/*,build/ios/iphoneos/app.ipa"
+          tag: v1.0.${{ github.run_number }}
+          token: ${{ secrets.pdf_app_token }}
+
+
+
+
+
+
+# push to master, main, develop
+# pull request on main master
