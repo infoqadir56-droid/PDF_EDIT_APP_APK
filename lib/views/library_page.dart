@@ -16,9 +16,11 @@ class LibraryPage extends StatefulWidget {
 class _LibraryPageState extends State<LibraryPage> {
   int _tab = 0;
   bool _favorites = false, _grid = true, _ascending = false;
+  String _sortField = 'date';
   String? _kindFilter;
   String _query = '';
   final _search = TextEditingController();
+  final _sortButtonKey = GlobalKey();
   LibraryController get c => widget.controller;
   @override
   void initState() { super.initState(); c.addListener(_changed); }
@@ -47,7 +49,7 @@ class _LibraryPageState extends State<LibraryPage> {
     if (_tab == 1) data = data.where((e) => _favorites ? e.isFavorite : true).toList();
     if (_kindFilter != null) data = data.where((e) => e.kind == _kindFilter).toList();
     if (_query.isNotEmpty) data = data.where((e) => e.name.toLowerCase().contains(_query.toLowerCase())).toList();
-    data.sort((a,b) => _ascending ? a.name.toLowerCase().compareTo(b.name.toLowerCase()) : b.addedAt.compareTo(a.addedAt));
+    data.sort(_compareItems);
     return Column(children: [
       Padding(padding: const EdgeInsets.fromLTRB(22, 16, 22, 8), child: TextField(
         controller: _search, onChanged: (v) => setState(() => _query = v),
@@ -65,7 +67,7 @@ class _LibraryPageState extends State<LibraryPage> {
         ],
         if (_tab == 0) const Spacer(),
         IconButton(tooltip: _grid ? 'List view' : 'Grid view', onPressed: () => setState(() => _grid = !_grid), icon: Icon(_grid ? Icons.grid_view_rounded : Icons.view_list_rounded, color: _ink, size: 27)),
-        IconButton(tooltip: 'Sort', onPressed: _sort, icon: const Icon(Icons.check_box_outlined, color: _ink, size: 27)),
+        IconButton(key: _sortButtonKey, tooltip: 'Sort', onPressed: _sort, icon: const Icon(Icons.check_box_outlined, color: _ink, size: 27)),
       ])),
       Expanded(child: c.loading ? const Center(child: CircularProgressIndicator(color: _blue))
         : _tab == 0 ? _fileCategories()
@@ -82,8 +84,8 @@ class _LibraryPageState extends State<LibraryPage> {
     padding: const EdgeInsets.fromLTRB(18, 8, 18, 24), crossAxisCount: 2,
     crossAxisSpacing: 14, mainAxisSpacing: 14, childAspectRatio: .76,
     children: [
-      _categoryCard('Files', Icons.folder_rounded, const Color(0xFF55C3F0), c.items.where((e) => e.kind == 'pdf').length, () { setState(() { _tab = 1; _favorites = false; _kindFilter = 'pdf'; }); }),
-      _categoryCard('Photos', Icons.image_rounded, const Color(0xFFFFB23F), c.items.where((e) => e.kind == 'image').length, () { setState(() { _tab = 1; _favorites = false; _kindFilter = 'image'; }); }),
+      _categoryCard('Files', Icons.folder_rounded, const Color(0xFF55C3F0), c.items.where((e) => e.kind == 'pdf').length, () => _pickCategory(imagesOnly: false)),
+      _categoryCard('Photos', Icons.image_rounded, const Color(0xFFFFB23F), c.items.where((e) => e.kind == 'image').length, () => _pickCategory(imagesOnly: true)),
       _categoryCard('Trash', Icons.delete_rounded, const Color(0xFFB8BCC2), 0, () => _toast('Trash is empty.')),
     ]);
 
@@ -118,6 +120,34 @@ class _LibraryPageState extends State<LibraryPage> {
   Widget _row(LibraryItem item) => Material(color: Colors.white, borderRadius: BorderRadius.circular(14), child: ListTile(onTap: () => _open(item), leading: SizedBox(width: 48, height: 54, child: _preview(item)), title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, color: _ink)), subtitle: Text(_date(item.addedAt), style: const TextStyle(color: _muted)), trailing: IconButton(onPressed: () => _actions(item), icon: const Icon(Icons.more_vert_rounded))));
 
   String _date(DateTime d) { final local = d.toLocal(); const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; final h = local.hour % 12 == 0 ? 12 : local.hour % 12; final m = local.minute.toString().padLeft(2, '0'); return '${months[local.month - 1]} ${local.day}, ${local.year} ${h.toString().padLeft(2, '0')}:$m ${local.hour < 12 ? 'AM' : 'PM'}'; }
+  Future<void> _pickCategory({required bool imagesOnly}) async {
+    final existingIds = c.items.map((item) => item.id).toSet();
+    await c.addFiles(imagesOnly: imagesOnly);
+    if (!mounted || !c.items.any((item) => !existingIds.contains(item.id))) return;
+    setState(() {
+      _tab = 1;
+      _favorites = false;
+      _kindFilter = imagesOnly ? 'image' : 'pdf';
+    });
+  }
+
+  int _compareItems(LibraryItem a, LibraryItem b) {
+    final comparison = switch (_sortField) {
+      'name' => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      'size' => _itemSize(a).compareTo(_itemSize(b)),
+      _ => a.addedAt.compareTo(b.addedAt),
+    };
+    return _ascending ? comparison : -comparison;
+  }
+
+  int _itemSize(LibraryItem item) {
+    try {
+      return File(item.path).lengthSync();
+    } on FileSystemException {
+      return 0;
+    }
+  }
+
   void _open(LibraryItem item) async {
     if (item.path.startsWith('demo:')) { _toast('This is a sample item. Add your own files with +.'); return; }
     if (item.kind == 'pdf') {
@@ -141,12 +171,103 @@ class _LibraryPageState extends State<LibraryPage> {
     ListTile(leading: const Icon(Icons.delete_outline_rounded, color: Colors.red), title: const Text('Remove from library', style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(ctx); c.remove(item); }),
   ])));
 
-  void _sort() => showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (ctx) => StatefulBuilder(builder: (ctx, refresh) => Padding(padding: const EdgeInsets.fromLTRB(20, 4, 20, 26), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Layout', style: TextStyle(fontWeight: FontWeight.w700, color: _muted)), const SizedBox(height: 10),
-    SegmentedButton<bool>(segments: const [ButtonSegment(value: false, icon: Icon(Icons.view_list_rounded), label: Text('List')), ButtonSegment(value: true, icon: Icon(Icons.grid_view_rounded), label: Text('Grid'))], selected: {_grid}, onSelectionChanged: (v) { setState(() => _grid = v.first); refresh(() {}); }),
-    const SizedBox(height: 18), const Text('Sort By', style: TextStyle(fontWeight: FontWeight.w700, color: _muted)),
-    for (final (label, value) in [('Date', false), ('Name', true)]) ListTile(contentPadding: EdgeInsets.zero, leading: Icon(_ascending == value ? Icons.check_rounded : Icons.sort_rounded), title: Text(label), trailing: _ascending == value ? Icon(_ascending ? Icons.arrow_upward : Icons.arrow_downward) : null, onTap: () { setState(() => _ascending = value); refresh(() {}); }),
-  ]))));
+  Future<void> _sort() async {
+    final buttonContext = _sortButtonKey.currentContext;
+    if (buttonContext == null) return;
+
+    final overlayBox = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final buttonBox = buttonContext.findRenderObject() as RenderBox;
+    final topLeft = buttonBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final bottomRight = buttonBox.localToGlobal(buttonBox.size.bottomRight(Offset.zero), ancestor: overlayBox);
+    final screenSize = overlayBox.size;
+    final menuWidth = screenSize.width < 320 ? screenSize.width - 24 : 300.0;
+    final left = (bottomRight.dx - menuWidth).clamp(12.0, screenSize.width - menuWidth - 12).toDouble();
+    final top = (bottomRight.dy + 8).clamp(12.0, screenSize.height - 390).toDouble();
+
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close layout and sort menu',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 120),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) => Material(
+        type: MaterialType.transparency,
+        child: Stack(children: [
+          Positioned(
+            left: left,
+            top: top,
+            child: _sortPopup(dialogContext, menuWidth),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _sortPopup(BuildContext dialogContext, double width) => StatefulBuilder(
+    builder: (context, refresh) => Material(
+      color: const Color(0xFFFAFAFA),
+      elevation: 12,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: width,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Layout', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _muted)),
+              const SizedBox(height: 10),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, icon: Icon(Icons.view_list_rounded), label: Text('List')),
+                  ButtonSegment(value: true, icon: Icon(Icons.grid_view_rounded), label: Text('Grid')),
+                ],
+                selected: {_grid},
+                onSelectionChanged: (values) {
+                  setState(() => _grid = values.first);
+                  refresh(() {});
+                },
+              ),
+              const SizedBox(height: 16),
+              const Text('Sort By', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _muted)),
+              const SizedBox(height: 4),
+              for (final (field, label) in [('date', 'Date'), ('name', 'Name'), ('size', 'Size')])
+                _sortOption(dialogContext, field, label),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _sortOption(BuildContext dialogContext, String field, String label) {
+    final selected = _sortField == field;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () {
+        setState(() {
+          if (_sortField == field) {
+            _ascending = !_ascending;
+          } else {
+            _sortField = field;
+            _ascending = field == 'name';
+          }
+        });
+        Navigator.of(dialogContext).pop();
+      },
+      child: SizedBox(
+        height: 48,
+        child: Row(children: [
+          Icon(selected ? Icons.check_rounded : Icons.sort_rounded, size: 21, color: _ink),
+          const SizedBox(width: 16),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 15, color: _ink))),
+          if (selected) Icon(_ascending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 20, color: _ink),
+        ]),
+      ),
+    );
+  }
 
   Widget _settings() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const Padding(padding: EdgeInsets.fromLTRB(22, 25, 22, 12), child: Text('Settings', style: TextStyle(fontSize: 24, color: _ink))),
