@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart';
 import 'package:printing/printing.dart';
@@ -20,7 +21,7 @@ class OcrResult { const OcrResult(this.text, this.path); final String text, path
 class PdfActionsController {
   static Future<String> createEmptyPdf() async {
     final document = pw.Document();
-    document.addPage(pw.Page(pageFormat: pw.PdfPageFormat.a4, build: (_) => pw.SizedBox.expand()));
+    document.addPage(pw.Page(pageFormat: PdfPageFormat.a4, build: (_) => pw.SizedBox.expand()));
     final dir = await _exportDir();
     final output = File('${dir.path}${Platform.pathSeparator}Untitled-${DateTime.now().millisecondsSinceEpoch}.pdf');
     await output.writeAsBytes(await document.save(), flush: true);
@@ -47,7 +48,7 @@ class PdfActionsController {
     final document = pw.Document();
     final image = pw.MemoryImage(imageBytes);
     document.addPage(pw.Page(
-      pageFormat: pw.PdfPageFormat.a4,
+      pageFormat: PdfPageFormat.a4,
       build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
     ));
     final dir = await _exportDir();

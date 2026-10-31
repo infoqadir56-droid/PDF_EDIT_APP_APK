@@ -182,7 +182,7 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
-  void _open(LibraryItem item) async {
+  Future<void> _open(LibraryItem item) async {
     if (item.path.startsWith('demo:')) { _toast('This is a sample item. Add your own files with +.'); return; }
     if (item.kind == 'folder') {
       await Navigator.of(context).push(MaterialPageRoute<void>(
