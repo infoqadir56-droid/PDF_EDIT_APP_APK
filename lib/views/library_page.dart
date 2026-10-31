@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../controllers/library_controller.dart';
+import '../controllers/pdf_actions_controller.dart';
 import '../models/library_item.dart';
+import 'folder_contents_screen.dart';
 import 'pdf_workspace_page.dart';
 
 const _blue = Color(0xFF2F80ED), _ink = Color(0xFF171717), _muted = Color(0xFF9A9A9A);
@@ -46,7 +49,7 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Widget _library() {
     var data = c.items.toList();
-    if (_tab == 1) data = data.where((e) => _favorites ? e.isFavorite : true).toList();
+    if (_tab == 1) data = data.where((e) => _favorites ? e.isFavorite : e.isRecent).toList();
     if (_kindFilter != null) data = data.where((e) => e.kind == _kindFilter).toList();
     if (_query.isNotEmpty) data = data.where((e) => e.name.toLowerCase().contains(_query.toLowerCase())).toList();
     data.sort(_compareItems);
@@ -80,14 +83,25 @@ class _LibraryPageState extends State<LibraryPage> {
     ]);
   }
 
-  Widget _fileCategories() => GridView.count(
-    padding: const EdgeInsets.fromLTRB(18, 8, 18, 24), crossAxisCount: 2,
-    crossAxisSpacing: 14, mainAxisSpacing: 14, childAspectRatio: .76,
-    children: [
-      _categoryCard('Files', Icons.folder_rounded, const Color(0xFF55C3F0), c.items.where((e) => e.kind == 'pdf').length, () => _pickCategory(imagesOnly: false)),
-      _categoryCard('Photos', Icons.image_rounded, const Color(0xFFFFB23F), c.items.where((e) => e.kind == 'image').length, () => _pickCategory(imagesOnly: true)),
-      _categoryCard('Trash', Icons.delete_rounded, const Color(0xFFB8BCC2), 0, () => _toast('Trash is empty.')),
-    ]);
+  Widget _fileCategories() {
+    final folders = c.items.where((item) => item.kind == 'folder').toList();
+    return GridView.count(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 24), crossAxisCount: 2,
+      crossAxisSpacing: 14, mainAxisSpacing: 14, childAspectRatio: .76,
+      children: [
+        _categoryCard('Files', Icons.folder_rounded, const Color(0xFF55C3F0), c.items.where((e) => e.kind == 'pdf').length, () => _pickCategory(imagesOnly: false)),
+        _categoryCard('Photos', Icons.image_rounded, const Color(0xFFFFB23F), c.items.where((e) => e.kind == 'image').length, () => _pickCategory(imagesOnly: true)),
+        _categoryCard('Trash', Icons.delete_rounded, const Color(0xFFB8BCC2), 0, () => _toast('Trash is empty.')),
+        for (final folder in folders)
+          _categoryCard(folder.name, Icons.folder_rounded, const Color(0xFF55C3F0), _folderItemCount(folder), () => _open(folder)),
+      ],
+    );
+  }
+
+  int _folderItemCount(LibraryItem folder) {
+    try { return Directory(folder.path).listSync(followLinks: false).length; }
+    on FileSystemException { return 0; }
+  }
 
   Widget _categoryCard(String title, IconData icon, Color color, int count, VoidCallback onTap) => Material(
     color: Colors.white, borderRadius: BorderRadius.circular(18), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(18), child: Column(
@@ -119,11 +133,31 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Widget _row(LibraryItem item) => Material(color: Colors.white, borderRadius: BorderRadius.circular(14), child: ListTile(onTap: () => _open(item), leading: SizedBox(width: 48, height: 54, child: _preview(item)), title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, color: _ink)), subtitle: Text(_date(item.addedAt), style: const TextStyle(color: _muted)), trailing: IconButton(onPressed: () => _actions(item), icon: const Icon(Icons.more_vert_rounded))));
 
-  String _date(DateTime d) { final local = d.toLocal(); const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; final h = local.hour % 12 == 0 ? 12 : local.hour % 12; final m = local.minute.toString().padLeft(2, '0'); return '${months[local.month - 1]} ${local.day}, ${local.year} ${h.toString().padLeft(2, '0')}:$m ${local.hour < 12 ? 'AM' : 'PM'}'; }
+  String _date(DateTime d) { final local = d.toLocal(); const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; final h = local.hour % 12 == 0 ? 12 : local.hour % 12; final m = local.minute.toString().padLeft(2, '0'); final s = local.second.toString().padLeft(2, '0'); return '${months[local.month - 1]} ${local.day}, ${local.year} $h:$m:$s ${local.hour < 12 ? 'AM' : 'PM'}'; }
   Future<void> _pickCategory({required bool imagesOnly}) async {
     final existingIds = c.items.map((item) => item.id).toSet();
     await c.addFiles(imagesOnly: imagesOnly);
-    if (!mounted || !c.items.any((item) => !existingIds.contains(item.id))) return;
+    if (!mounted) return;
+    final addedItems = c.items.where((item) => !existingIds.contains(item.id)).toList();
+    if (addedItems.isEmpty) return;
+
+    // A PDF chosen from the Files category should enter the reader immediately.
+    // Sending the user to Recents first made the picker feel like it had not opened
+    // the selected document at all.
+    if (!imagesOnly) {
+      LibraryItem? selectedPdf;
+      for (final item in addedItems) {
+        if (item.kind == 'pdf') {
+          selectedPdf = item;
+          break;
+        }
+      }
+      if (selectedPdf != null) {
+        await _open(selectedPdf);
+        return;
+      }
+    }
+
     setState(() {
       _tab = 1;
       _favorites = false;
@@ -150,6 +184,12 @@ class _LibraryPageState extends State<LibraryPage> {
 
   void _open(LibraryItem item) async {
     if (item.path.startsWith('demo:')) { _toast('This is a sample item. Add your own files with +.'); return; }
+    if (item.kind == 'folder') {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => FolderContentsScreen(folder: item, controller: c),
+      ));
+      return;
+    }
     if (item.kind == 'pdf') {
       await c.markRecent(item);
       if (!mounted) return;
@@ -159,17 +199,138 @@ class _LibraryPageState extends State<LibraryPage> {
     await c.open(item);
   }
 
-  void _addMenu() => showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 8, 20, 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Add to your library', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-    const SizedBox(height: 12), ListTile(leading: const Icon(Icons.picture_as_pdf_rounded, color: _blue), title: const Text('PDF or document'), subtitle: const Text('Choose files from your device'), onTap: () { Navigator.pop(ctx); c.addFiles(); }),
-    ListTile(leading: const Icon(Icons.photo_library_rounded, color: _blue), title: const Text('Photos'), subtitle: const Text('Add images to your library'), onTap: () { Navigator.pop(ctx); c.addFiles(imagesOnly: true); }),
-  ]))));
+  void _addMenu() => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: const Color(0xFFFAFAFA),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (sheetContext) => SafeArea(child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 18),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Import From', style: TextStyle(fontSize: 15, color: _muted)),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(child: _importTile(Icons.image_rounded, 'Photos', () { Navigator.pop(sheetContext); _pickCategory(imagesOnly: true); })),
+          const SizedBox(width: 16),
+          Expanded(child: _importTile(Icons.folder_rounded, 'Files', () { Navigator.pop(sheetContext); _pickCategory(imagesOnly: false); })),
+        ]),
+        const SizedBox(height: 26),
+        const Text('Create New', style: TextStyle(fontSize: 15, color: _muted)),
+        const SizedBox(height: 12),
+        _createTile(Icons.document_scanner_outlined, 'Scan', () { Navigator.pop(sheetContext); _scanDocument(); }),
+        const SizedBox(height: 10),
+        _createTile(Icons.note_add_outlined, 'Create empty PDF', () { Navigator.pop(sheetContext); _createEmptyPdf(); }),
+        const SizedBox(height: 10),
+        _createTile(Icons.create_new_folder_outlined, 'Create new folder', () { Navigator.pop(sheetContext); _createFolder(); }),
+      ]),
+    )),
+  );
 
-  void _actions(LibraryItem item) => showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-    ListTile(leading: const Icon(Icons.open_in_new_rounded), title: const Text('Open'), onTap: () { Navigator.pop(ctx); _open(item); }),
-    ListTile(leading: Icon(item.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: Colors.redAccent), title: Text(item.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'), onTap: () { Navigator.pop(ctx); c.toggleFavorite(item); }),
-    ListTile(leading: const Icon(Icons.delete_outline_rounded, color: Colors.red), title: const Text('Remove from library', style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(ctx); c.remove(item); }),
-  ])));
+  Widget _importTile(IconData icon, String label, VoidCallback action) => Material(
+    color: Colors.white, borderRadius: BorderRadius.circular(14),
+    child: InkWell(onTap: action, borderRadius: BorderRadius.circular(14), child: Container(
+      height: 90, decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE8E8E8)), borderRadius: BorderRadius.circular(14)),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 36, color: _blue), const SizedBox(height: 6), Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))]),
+    )),
+  );
+
+  Widget _createTile(IconData icon, String title, VoidCallback action) => Material(
+    color: Colors.white, borderRadius: BorderRadius.circular(12),
+    child: InkWell(onTap: action, borderRadius: BorderRadius.circular(12), child: Container(
+      height: 54, padding: const EdgeInsets.symmetric(horizontal: 15),
+      decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE8E8E8)), borderRadius: BorderRadius.circular(12)),
+      child: Row(children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))), Icon(icon, color: const Color(0xFF555B66))]),
+    )),
+  );
+
+  Future<void> _scanDocument() async {
+    try {
+      final photo = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 90);
+      if (photo == null || !mounted) return;
+      final pdfPath = await PdfActionsController.imageToPdf(photo.path);
+      await c.addGeneratedFile(pdfPath, 'Scan-${DateTime.now().millisecondsSinceEpoch}.pdf');
+      if (mounted) _toast('Scan saved as a PDF.');
+    } catch (error) { if (mounted) _toast('Could not scan: $error'); }
+  }
+
+  Future<void> _createEmptyPdf() async {
+    try {
+      final path = await PdfActionsController.createEmptyPdf();
+      await c.addGeneratedFile(path, 'Untitled-${DateTime.now().millisecondsSinceEpoch}.pdf');
+      if (mounted) _toast('Empty PDF created.');
+    } catch (error) { if (mounted) _toast('Could not create PDF: $error'); }
+  }
+
+  Future<void> _createFolder() async {
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Create new folder'),
+      content: TextField(controller: nameController, autofocus: true, decoration: const InputDecoration(hintText: 'Folder name')),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, nameController.text.trim()), child: const Text('Create'))],
+    ));
+    nameController.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+    try {
+      await c.createFolder(name);
+      if (mounted) _toast('Folder created in your app library.');
+    } catch (error) { if (mounted) _toast('Could not create folder: $error'); }
+  }
+
+  void _actions(LibraryItem item) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: const Color(0xFFFAFAFA),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 16), child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(contentPadding: EdgeInsets.zero, title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(_date(item.addedAt)), trailing: IconButton(icon: const Icon(Icons.chevron_right_rounded), onPressed: () { Navigator.pop(ctx); _open(item); })),
+        const SizedBox(height: 8),
+        if (item.kind != 'folder') ...[
+          _actionGroup([
+            _actionTile('Share', Icons.ios_share_rounded, () { Navigator.pop(ctx); _runAction(() => PdfActionsController.shareLibraryFile(item.path, item.name, isImage: item.kind == 'image')); }),
+            _actionTile('Print', Icons.print_outlined, () { Navigator.pop(ctx); _runAction(() => PdfActionsController.printLibraryFile(item.path, isImage: item.kind == 'image')); }),
+          ]),
+          const SizedBox(height: 12),
+        ],
+        _actionGroup([
+          if (item.kind != 'folder') _actionTile('Convert to PDF', Icons.picture_as_pdf_outlined, () { Navigator.pop(ctx); _convertToPdf(item); }),
+          _actionTile(item.isFavorite ? 'Remove from Favorites' : 'Add to Favorites', item.isFavorite ? Icons.star_rounded : Icons.star_border_rounded, () { Navigator.pop(ctx); c.toggleFavorite(item); }),
+          _actionTile('Remove from Recents', Icons.remove_circle_outline_rounded, () { Navigator.pop(ctx); c.removeFromRecents(item); }),
+        ]),
+      ],
+    ))),
+  );
+
+  Widget _actionGroup(List<Widget> children) => Material(
+    color: Colors.white, borderRadius: BorderRadius.circular(16), clipBehavior: Clip.antiAlias,
+    child: Column(children: [for (var i = 0; i < children.length; i++) ...[
+      if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16), children[i],
+    ]]),
+  );
+
+  Widget _actionTile(String title, IconData icon, VoidCallback action) => ListTile(
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+    trailing: Icon(icon, color: const Color(0xFF555B66)),
+    onTap: action,
+  );
+
+  Future<void> _convertToPdf(LibraryItem item) async {
+    if (item.kind != 'image') { _toast('This file is already a PDF.'); return; }
+    try {
+      final path = await PdfActionsController.imageToPdf(item.path);
+      final dot = item.name.lastIndexOf('.');
+      final baseName = dot > 0 ? item.name.substring(0, dot) : item.name;
+      await c.addGeneratedFile(path, '$baseName.pdf');
+      if (mounted) _toast('PDF added to your library.');
+    } catch (error) { if (mounted) _toast('Could not convert image: $error'); }
+  }
+
+  Future<void> _runAction(Future<String?> Function() action) async {
+    try { final message = await action(); if (message != null && mounted) _toast(message); }
+    catch (error) { if (mounted) _toast('Action failed: $error'); }
+  }
 
   Future<void> _sort() async {
     final buttonContext = _sortButtonKey.currentContext;

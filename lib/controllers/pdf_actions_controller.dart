@@ -7,8 +7,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart';
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import '../views/pdf_convert_screen.dart';
 
 enum OcrLanguage { auto, chinese, japanese, korean }
@@ -16,6 +18,44 @@ extension OcrLanguageLabel on OcrLanguage { String get label => switch (this) { 
 class OcrResult { const OcrResult(this.text, this.path); final String text, path; }
 
 class PdfActionsController {
+  static Future<String> createEmptyPdf() async {
+    final document = pw.Document();
+    document.addPage(pw.Page(pageFormat: pw.PdfPageFormat.a4, build: (_) => pw.SizedBox.expand()));
+    final dir = await _exportDir();
+    final output = File('${dir.path}${Platform.pathSeparator}Untitled-${DateTime.now().millisecondsSinceEpoch}.pdf');
+    await output.writeAsBytes(await document.save(), flush: true);
+    return output.path;
+  }
+
+  static Future<String?> shareLibraryFile(String path, String name, {required bool isImage}) async {
+    if (isImage) {
+      await SharePlus.instance.share(ShareParams(files: [XFile(path)], title: name));
+    } else {
+      await Printing.sharePdf(bytes: await File(path).readAsBytes(), filename: name);
+    }
+    return 'Share sheet opened.';
+  }
+
+  static Future<String?> printLibraryFile(String path, {required bool isImage}) async {
+    final pdfPath = isImage ? await imageToPdf(path) : path;
+    await Printing.layoutPdf(onLayout: (_) async => File(pdfPath).readAsBytes());
+    return 'Print dialog opened.';
+  }
+
+  static Future<String> imageToPdf(String path) async {
+    final imageBytes = await File(path).readAsBytes();
+    final document = pw.Document();
+    final image = pw.MemoryImage(imageBytes);
+    document.addPage(pw.Page(
+      pageFormat: pw.PdfPageFormat.a4,
+      build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
+    ));
+    final dir = await _exportDir();
+    final output = File('${dir.path}${Platform.pathSeparator}${_base(path)}.pdf');
+    await output.writeAsBytes(await document.save(), flush: true);
+    return output.path;
+  }
+
   static Future<String?> share(String path, String name) async {
     await Printing.sharePdf(bytes: await File(path).readAsBytes(), filename: name);
     return 'Share sheet opened.';

@@ -20,21 +20,22 @@ class LibraryController extends ChangeNotifier {
       if (raw != null) {
         final decoded = jsonDecode(raw) as List<dynamic>;
         items = decoded.map((e) => LibraryItem.fromJson(e as Map<String, dynamic>))
-            .where((e) => e.path.startsWith('demo:') || File(e.path).existsSync()).toList();
+            .where((e) => e.path.startsWith('demo:') ||
+                (e.kind == 'folder' ? Directory(e.path).existsSync() : File(e.path).existsSync())).toList();
       }
     } catch (_) { error = 'Could not load your saved library.'; }
     loading = false;
     notifyListeners();
   }
 
-  Future<void> addFiles({bool imagesOnly = false}) async {
+  Future<void> addFiles({bool imagesOnly = false, String? targetDirectory}) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true, type: imagesOnly ? FileType.image : FileType.custom,
         allowedExtensions: imagesOnly ? null : ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'gif']);
       if (result == null) return;
       final dir = await getApplicationDocumentsDirectory();
-      final libraryDir = Directory('${dir.path}${Platform.pathSeparator}paper_library');
+      final libraryDir = Directory(targetDirectory ?? '${dir.path}${Platform.pathSeparator}paper_library');
       await libraryDir.create(recursive: true);
       for (final file in result.files) {
         if (file.path == null) continue;
@@ -56,6 +57,48 @@ class LibraryController extends ChangeNotifier {
     } catch (_) { error = 'Could not add the selected files.'; notifyListeners(); }
   }
 
+  Future<void> addGeneratedFile(String sourcePath, String name, {String kind = 'pdf'}) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final libraryDir = Directory('${dir.path}${Platform.pathSeparator}paper_library');
+      await libraryDir.create(recursive: true);
+      final safeName = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+      var destination = '${libraryDir.path}${Platform.pathSeparator}$safeName';
+      if (File(destination).existsSync()) {
+        final dot = safeName.lastIndexOf('.');
+        final stem = dot > 0 ? safeName.substring(0, dot) : safeName;
+        final ext = dot > 0 ? safeName.substring(dot) : '';
+        destination = '${libraryDir.path}${Platform.pathSeparator}$stem-${DateTime.now().microsecondsSinceEpoch}$ext';
+      }
+      final copied = await File(sourcePath).copy(destination);
+      items.insert(0, LibraryItem(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        name: safeName,
+        path: copied.path,
+        kind: kind,
+        addedAt: DateTime.now(),
+      ));
+      await _save();
+    } catch (_) {
+      error = 'Could not add the generated file to your library.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> createFolder(String name) async {
+    final docs = await getApplicationDocumentsDirectory();
+    final root = Directory('${docs.path}${Platform.pathSeparator}paper_library');
+    await root.create(recursive: true);
+    final safeName = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    final folder = Directory('${root.path}${Platform.pathSeparator}$safeName');
+    if (await folder.exists()) throw StateError('A folder with that name already exists.');
+    await folder.create();
+    items.insert(0, LibraryItem(id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: safeName, path: folder.path, kind: 'folder', addedAt: DateTime.now()));
+    await _save();
+  }
+
   Future<void> toggleFavorite(LibraryItem item) async {
     items = items.map((e) => e.id == item.id ? e.copyWith(isFavorite: !e.isFavorite) : e).toList();
     await _save();
@@ -63,7 +106,12 @@ class LibraryController extends ChangeNotifier {
 
   Future<void> remove(LibraryItem item) async {
     items.removeWhere((e) => e.id == item.id);
-    try { if (!item.path.startsWith('demo:')) await File(item.path).delete(); } catch (_) {}
+    try {
+      if (!item.path.startsWith('demo:')) {
+        if (item.kind == 'folder') await Directory(item.path).delete(recursive: true);
+        else await File(item.path).delete();
+      }
+    } catch (_) {}
     await _save();
   }
 
@@ -75,7 +123,14 @@ class LibraryController extends ChangeNotifier {
 
   Future<void> markRecent(LibraryItem item) async {
     if (item.path.startsWith('demo:')) return;
-    items = items.map((e) => e.id == item.id ? e.copyWith(addedAt: DateTime.now()) : e).toList();
+    items = items.map((e) => e.id == item.id
+        ? e.copyWith(addedAt: DateTime.now(), isRecent: true)
+        : e).toList();
+    await _save();
+  }
+
+  Future<void> removeFromRecents(LibraryItem item) async {
+    items = items.map((e) => e.id == item.id ? e.copyWith(isRecent: false) : e).toList();
     await _save();
   }
 
