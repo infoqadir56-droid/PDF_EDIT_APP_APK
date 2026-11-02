@@ -29,22 +29,43 @@ class _PdfMoreMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Stack(children: [
     Positioned.fill(child: GestureDetector(onTap: () => Navigator.pop(context))),
-    SafeArea(child: Align(alignment: Alignment.topRight, child: Container(
-      width: MediaQuery.sizeOf(context).width - 30,
-      margin: const EdgeInsets.only(top: 56, right: 8),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFDDDDDD)), boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 14, offset: Offset(0, 4))]),
+    SafeArea(child: Align(alignment: Alignment.topCenter, child: Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height - 100),
+      width: MediaQuery.sizeOf(context).width - 52,
+      margin: const EdgeInsets.only(top: 66),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(24), border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), boxShadow: const [BoxShadow(color: Color(0x24000000), blurRadius: 22, offset: Offset(0, 8))]),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Align(alignment: Alignment.centerLeft, child: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
-        const SizedBox(height: 8), Align(alignment: Alignment.centerLeft, child: Text('Page $currentPage', style: const TextStyle(color: Colors.black54))),
-        const SizedBox(height: 8),
-        for (var i = 0; i < entries.length; i++) _action(context, i),
+        Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF202124), decoration: TextDecoration.none)),
+            const SizedBox(height: 4),
+            Text('Page $currentPage', style: const TextStyle(color: Color(0xFF70757A), fontSize: 14, decoration: TextDecoration.none)),
+          ])),
+          IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
+        ]),
+        const SizedBox(height: 10),
+        Flexible(child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = 0; i < entries.length; i++) _action(context, i),
+        ]))),
       ]),
     ))),
   ]);
 
   Widget _action(BuildContext context, int index) {
     final (icon, title) = entries[index];
-    return InkWell(onTap: () { Navigator.pop(context); actions[index](); }, child: Container(height: 53, decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE)))), child: Row(children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))), Icon(icon, color: const Color(0xFF646A73), size: 22)])));
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () { Navigator.pop(context); actions[index](); },
+      child: Container(
+        height: 54,
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFEAECEF)))),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(children: [
+          Expanded(child: Text(title, style: const TextStyle(color: Color(0xFF202124), fontWeight: FontWeight.w600, fontSize: 15, decoration: TextDecoration.none))),
+          Icon(icon, color: const Color(0xFF646A73), size: 22),
+        ]),
+      ),
+    );
   }
 }

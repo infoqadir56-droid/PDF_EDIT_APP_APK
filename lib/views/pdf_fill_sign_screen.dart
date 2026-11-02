@@ -3,15 +3,17 @@ import '../models/library_item.dart';
 import 'pdf_editor_screen.dart';
 
 class PdfFillSignScreen extends StatelessWidget {
-  const PdfFillSignScreen({super.key, required this.item, required this.onModeSelected});
+  const PdfFillSignScreen({super.key, required this.item, required this.onModeSelected, required this.onMore});
   final LibraryItem item;
   final ValueChanged<PdfEditorMode> onModeSelected;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) => PdfEditorScreen(
         item: item,
         mode: PdfEditorMode.fillSign,
         onModeSelected: onModeSelected,
+        onMore: onMore,
         toolbarBuilder: (_) => const _FillSignToolbar(),
       );
 }

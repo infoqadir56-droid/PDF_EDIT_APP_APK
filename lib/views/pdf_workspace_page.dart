@@ -104,10 +104,10 @@ class _PdfWorkspacePageState extends State<PdfWorkspacePage> {
   };
 
   Widget _editorPage(PdfEditorMode mode) => switch (mode) {
-    PdfEditorMode.annotate => PdfAnnotateScreen(item: widget.item, onModeSelected: _switchMode),
-    PdfEditorMode.edit => PdfEditScreen(item: widget.item, onModeSelected: _switchMode),
-    PdfEditorMode.organize => PdfOrganizePagesScreen(item: widget.item, onModeSelected: _switchMode),
-    PdfEditorMode.fillSign => PdfFillSignScreen(item: widget.item, onModeSelected: _switchMode),
+    PdfEditorMode.annotate => PdfAnnotateScreen(item: widget.item, onModeSelected: _switchMode, onMore: () => _showMore()),
+    PdfEditorMode.edit => PdfEditScreen(item: widget.item, onModeSelected: _switchMode, onMore: () => _showMore()),
+    PdfEditorMode.organize => PdfOrganizePagesScreen(item: widget.item, onModeSelected: _switchMode, onMore: () => _showMore()),
+    PdfEditorMode.fillSign => PdfFillSignScreen(item: widget.item, onModeSelected: _switchMode, onMore: () => _showMore()),
   };
 
 }

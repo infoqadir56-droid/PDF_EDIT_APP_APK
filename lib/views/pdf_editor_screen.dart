@@ -11,12 +11,14 @@ class PdfEditorScreen extends StatefulWidget {
     required this.mode,
     required this.toolbarBuilder,
     required this.onModeSelected,
+    required this.onMore,
   });
 
   final LibraryItem item;
   final PdfEditorMode mode;
   final Widget Function(int pageCount) toolbarBuilder;
   final ValueChanged<PdfEditorMode> onModeSelected;
+  final VoidCallback onMore;
 
   @override
   State<PdfEditorScreen> createState() => _PdfEditorScreenState();
@@ -104,9 +106,7 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
             ),
             const Spacer(),
             IconButton(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('More PDF actions')),
-              ),
+              onPressed: widget.onMore,
               icon: const Icon(Icons.more_horiz_rounded),
             ),
           ],

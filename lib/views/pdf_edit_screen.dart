@@ -3,9 +3,10 @@ import '../models/library_item.dart';
 import 'pdf_editor_screen.dart';
 
 class PdfEditScreen extends StatefulWidget {
-  const PdfEditScreen({super.key, required this.item, required this.onModeSelected});
+  const PdfEditScreen({super.key, required this.item, required this.onModeSelected, required this.onMore});
   final LibraryItem item;
   final ValueChanged<PdfEditorMode> onModeSelected;
+  final VoidCallback onMore;
   @override
   State<PdfEditScreen> createState() => _PdfEditScreenState();
 }
@@ -18,6 +19,7 @@ class _PdfEditScreenState extends State<PdfEditScreen> {
         item: widget.item,
         mode: PdfEditorMode.edit,
         onModeSelected: widget.onModeSelected,
+        onMore: widget.onMore,
         toolbarBuilder: (_) => _toolbar(context),
       );
 
@@ -51,7 +53,7 @@ class _PdfEditScreenState extends State<PdfEditScreen> {
           child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
             Text(label, style: const TextStyle(fontSize: 15)),
             const SizedBox(height: 8),
-            Container(height: 2, width: 44, color: selected ? Colors.redAccent : Colors.transparent),
+            Container(height: 2, width: 44, color: selected ? const Color(0xFF2F80ED) : Colors.transparent),
           ]),
         ),
       );

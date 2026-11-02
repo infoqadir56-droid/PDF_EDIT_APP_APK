@@ -3,15 +3,17 @@ import '../models/library_item.dart';
 import 'pdf_editor_screen.dart';
 
 class PdfOrganizePagesScreen extends StatelessWidget {
-  const PdfOrganizePagesScreen({super.key, required this.item, required this.onModeSelected});
+  const PdfOrganizePagesScreen({super.key, required this.item, required this.onModeSelected, required this.onMore});
   final LibraryItem item;
   final ValueChanged<PdfEditorMode> onModeSelected;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) => PdfEditorScreen(
         item: item,
         mode: PdfEditorMode.organize,
         onModeSelected: onModeSelected,
+        onMore: onMore,
         toolbarBuilder: (pageCount) => _OrganizeToolbar(pageCount: pageCount),
       );
 }

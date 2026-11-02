@@ -1,17 +1,24 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../controllers/library_controller.dart';
 import '../controllers/pdf_actions_controller.dart';
 import '../models/library_item.dart';
 import 'folder_contents_screen.dart';
 import 'pdf_workspace_page.dart';
+import 'settings_feedback_screen.dart';
+import 'settings_language_screen.dart';
 
 const _blue = Color(0xFF2F80ED), _ink = Color(0xFF171717), _muted = Color(0xFF9A9A9A);
 
 class LibraryPage extends StatefulWidget {
-  const LibraryPage({super.key, required this.controller});
+  const LibraryPage({super.key, required this.controller, required this.language, required this.themeMode, required this.onLanguageChanged, required this.onThemeChanged});
   final LibraryController controller;
+  final String language;
+  final ThemeMode themeMode;
+  final ValueChanged<String> onLanguageChanged;
+  final ValueChanged<ThemeMode> onThemeChanged;
   @override
   State<LibraryPage> createState() => _LibraryPageState();
 }
@@ -431,14 +438,104 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Widget _settings() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Padding(padding: EdgeInsets.fromLTRB(22, 25, 22, 12), child: Text('Settings', style: TextStyle(fontSize: 24, color: _ink))),
-    _settingRow('Language', 'Auto', () => _toast('Language: Auto')),
-    _settingRow('Theme', 'Auto', () => _toast('Theme: Auto')),
-    _settingRow('Feedback', '', () => _toast('Thanks for helping improve Paper.')),
-    _settingRow('Follow Us', '', () => _toast('Paper PDF')),
-    _settingRow('Rate', '', () => _toast('Thank you for using Paper.')),
-    const Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.picture_as_pdf_rounded, size: 72, color: Colors.redAccent), SizedBox(height: 10), Text('Version: 1.0', style: TextStyle(color: _muted))]))),
+    Padding(padding: const EdgeInsets.fromLTRB(22, 25, 22, 12), child: Text('Settings', style: TextStyle(fontSize: 24, color: Theme.of(context).colorScheme.onSurface))),
+    _settingRow('Language', widget.language, _chooseLanguage),
+    _settingRow('Theme', _themeLabel, _chooseTheme),
+    _settingRow('Feedback', '', _openFeedback),
+    _settingRow('Follow Us', '', _showFollowDialog),
+    _settingRow('Rate', '', _showRateDialog),
+    Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.picture_as_pdf_rounded, size: 72, color: Color(0xFF2F80ED)), const SizedBox(height: 10), Text('Version: 1.0', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))]))),
   ]);
-  Widget _settingRow(String title, String value, VoidCallback action) => InkWell(onTap: action, child: Container(height: 65, padding: const EdgeInsets.symmetric(horizontal: 22), decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE)))), child: Row(children: [Expanded(child: Text(title, style: const TextStyle(fontSize: 16, color: _ink))), if (value.isNotEmpty) Text(value, style: const TextStyle(color: _muted, fontSize: 15)), if (value.isNotEmpty) const Icon(Icons.chevron_right_rounded, color: _muted)])));
+
+  String get _themeLabel => switch (widget.themeMode) {
+    ThemeMode.system => 'Auto', ThemeMode.light => 'Light', ThemeMode.dark => 'Dark',
+  };
+
+  Widget _settingRow(String title, String value, VoidCallback action) => InkWell(
+    onTap: action,
+    child: Container(
+      height: 65,
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant))),
+      child: Row(children: [
+        Expanded(child: Text(title, style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface))),
+        if (value.isNotEmpty) Text(value, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 15)),
+        Icon(Icons.chevron_right_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ]),
+    ),
+  );
+
+  Future<void> _chooseLanguage() async {
+    final value = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => SettingsLanguageScreen(selected: widget.language),
+    ));
+    if (value != null) widget.onLanguageChanged(value);
+  }
+
+  Future<void> _chooseTheme() async {
+    final value = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Padding(padding: EdgeInsets.fromLTRB(20, 4, 20, 12), child: Text('Theme', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
+        for (final (mode, label) in [(ThemeMode.system, 'Auto'), (ThemeMode.light, 'Light'), (ThemeMode.dark, 'Dark')])
+          RadioListTile<ThemeMode>(
+            value: mode,
+            groupValue: widget.themeMode,
+            title: Text(label),
+            activeColor: _blue,
+            onChanged: (_) => Navigator.pop(sheetContext, mode),
+          ),
+        const SizedBox(height: 10),
+      ])),
+    );
+    if (value != null) widget.onThemeChanged(value);
+  }
+
+  void _openFeedback() => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsFeedbackScreen()));
+
+  Future<void> _showFollowDialog() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFFAFA), Color(0xFFFFE6E8)]),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [const Spacer(), const Text('Paper PDF', style: TextStyle(fontSize: 16)), const SizedBox(width: 8), const Icon(Icons.verified_rounded, color: Color(0xFFEF4444)), const Spacer(), IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded))]),
+          const SizedBox(height: 8),
+          const Text('Support Paper', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          const Text('Share the project with someone who may find it useful.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF6F7378), fontSize: 15)),
+          const SizedBox(height: 22),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await SharePlus.instance.share(ShareParams(text: 'Paper PDF project: https://github.com/infoqadir56-droid/PDF_EDIT_APP'));
+            },
+            icon: const Icon(Icons.share_rounded), label: const Text('SHARE PROJECT'),
+            style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: _ink, minimumSize: const Size.fromHeight(54)),
+          )),
+        ]),
+      ),
+    ),
+  );
+
+  Future<void> _showRateDialog() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Rate Paper PDF'),
+      content: const Text('The app does not have a Play Store listing yet. You can send feedback from Settings to help improve it.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+        FilledButton(onPressed: () { Navigator.pop(dialogContext); _openFeedback(); }, child: const Text('Send feedback')),
+      ],
+    ),
+  );
 }
 
